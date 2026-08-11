@@ -1,10 +1,10 @@
 import "dotenv/config";
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import ExcelJS from "exceljs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../generated/prisma/client.js";
 import { ReviewLog } from "./lib/review";
+import { isUrl, openWorkbookSource } from "./lib/workbook-source";
 import { readScene2026 } from "./sheets/scene2026";
 import {
   readScene2022,
@@ -32,10 +32,12 @@ import type { ImportedWorkbook } from "./sheets/types";
  * refused to guess at.
  *
  * The finished seasons — 2022 through 2026 — are read from their workbooks.
- * Each `Placement Scene '<yy>.xlsx` is optional: a season whose file is not
- * present is skipped with a note rather than failing the whole run, so the
- * import works from whichever archives a maintainer has to hand. Importing them
- * gives every recruiter a previous-years section and seeds the company list.
+ * Each season's source can be a local `Placement Scene '<yy>.xlsx` OR a link:
+ * set its IMPORT_XLSX_<year> env var to a Google Sheets URL and the workbook is
+ * fetched directly, so the import works without downloading the files. A local
+ * file that is not present is skipped with a note (a URL that fails is a real
+ * error). Importing gives every recruiter a previous-years section and seeds
+ * the company list.
  *
  * 2027 is different: it is the season being played right now. There is no
  * finished workbook for it, only the short list of companies that have visited
@@ -100,12 +102,6 @@ function requestedYear(): number | null {
   return year;
 }
 
-async function openWorkbook(path: string): Promise<ExcelJS.Workbook> {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(path);
-  return workbook;
-}
-
 function summarise(parsed: ImportedWorkbook): void {
   const roles = parsed.drives.flatMap((drive) => drive.roles);
   const rounds = roles.flatMap((role) => role.rounds);
@@ -125,22 +121,24 @@ function summarise(parsed: ImportedWorkbook): void {
 }
 
 /**
- * Parses one season if its file is available. Returns null when a file-based
- * season's workbook is not present, so the caller can skip it.
+ * Parses one season if its source is available. The source is a local file or a
+ * link, chosen by the season's IMPORT_XLSX_<year> env var (falling back to the
+ * default local path). Returns null when a local file is not present, so the
+ * caller can skip it; a URL is always attempted.
  */
 async function parseSource(source: Source, review: ReviewLog): Promise<ImportedWorkbook | null> {
   if (source.file === null) {
     return source.read(null, review);
   }
 
-  const path = process.env[source.file.envVar] ?? source.file.defaultPath;
-  const resolved = resolve(path);
-  if (!existsSync(resolved)) {
-    console.log(`\n  batch ${source.batchYear}: no workbook at ${path} — skipped.`);
+  const location = process.env[source.file.envVar] ?? source.file.defaultPath;
+  const workbook = await openWorkbookSource(location);
+  if (!workbook) {
+    console.log(`\n  batch ${source.batchYear}: no workbook at ${location} — skipped.`);
     return null;
   }
 
-  const workbook = await openWorkbook(resolved);
+  console.log(`\n  batch ${source.batchYear}: reading ${isUrl(location) ? "link" : "file"} ${location}`);
   return source.read(workbook, review);
 }
 
