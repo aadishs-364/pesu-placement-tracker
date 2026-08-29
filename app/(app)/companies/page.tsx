@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireStudent } from "@/lib/auth/rbac";
+import { getCurrentStudent } from "@/lib/auth/rbac";
 import { prisma } from "@/lib/db";
 import { queryDirectory, SORT_KEYS, type SortKey } from "@/lib/analytics/directory";
 import { FilterBar } from "@/components/data/filter-bar";
@@ -47,14 +47,14 @@ export default async function CompaniesPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const student = await requireStudent("/companies");
+  const student = await getCurrentStudent();
   const params = await searchParams;
 
   const batches = await prisma.batch.findMany({ orderBy: { year: "desc" }, select: { year: true } });
   const requested = Number.parseInt(params["batch"] ?? "", 10);
   const batchYear =
     batches.find((batch) => batch.year === requested)?.year ??
-    student.graduationYear ??
+    student?.graduationYear ??
     batches[0]?.year ??
     new Date().getFullYear();
 
