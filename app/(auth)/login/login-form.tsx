@@ -10,8 +10,8 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="mt-2 inline-flex h-11 w-full items-center justify-center rounded-lg px-4 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-      style={{ background: "#4b5ce0" }}
+      className="mt-2 inline-flex h-11 w-full items-center justify-center rounded-lg px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+      style={{ background: "var(--accent-solid)", color: "var(--accent-fg)" }}
     >
       {pending ? "Checking with PESU…" : "Sign in"}
     </button>
@@ -26,7 +26,7 @@ export function LoginForm({ next }: { next?: string }) {
       {next ? <input type="hidden" name="next" value={next} /> : null}
 
       <div className="space-y-1.5">
-        <label htmlFor="username" className="block text-sm font-medium" style={{ color: "#e5e7eb" }}>
+        <label htmlFor="username" className="block text-sm font-medium">
           SRN or PRN
         </label>
         <input
@@ -38,17 +38,17 @@ export function LoginForm({ next }: { next?: string }) {
           required
           placeholder="PES1UG23CS001"
           aria-describedby={state.error ? "login-error" : undefined}
-          className="h-11 w-full rounded-lg border px-3 text-sm outline-none transition-colors focus:border-[#6272ea]"
+          className="h-11 w-full rounded-lg border px-3 text-sm outline-none transition-colors focus:border-[var(--accent)]"
           style={{
-            borderColor: "rgba(255, 255, 255, 0.14)",
-            background: "#16181d",
-            color: "#f2f3f5",
+            borderColor: "var(--line-strong)",
+            background: "var(--overlay)",
+            color: "var(--text)",
           }}
         />
       </div>
 
       <div className="space-y-1.5">
-        <label htmlFor="password" className="block text-sm font-medium" style={{ color: "#e5e7eb" }}>
+        <label htmlFor="password" className="block text-sm font-medium">
           PESU password
         </label>
         <input
@@ -58,11 +58,11 @@ export function LoginForm({ next }: { next?: string }) {
           autoComplete="current-password"
           required
           aria-describedby={state.error ? "login-error" : undefined}
-          className="h-11 w-full rounded-lg border px-3 text-sm outline-none transition-colors focus:border-[#6272ea]"
+          className="h-11 w-full rounded-lg border px-3 text-sm outline-none transition-colors focus:border-[var(--accent)]"
           style={{
-            borderColor: "rgba(255, 255, 255, 0.14)",
-            background: "#16181d",
-            color: "#f2f3f5",
+            borderColor: "var(--line-strong)",
+            background: "var(--overlay)",
+            color: "var(--text)",
           }}
         />
       </div>
@@ -73,8 +73,8 @@ export function LoginForm({ next }: { next?: string }) {
           role="alert"
           className="rounded-lg border px-3 py-2 text-sm"
           style={{
-            borderColor: "rgba(240, 100, 92, 0.4)",
-            color: "#f0645c",
+            borderColor: "color-mix(in oklch, var(--critical) 40%, var(--line))",
+            color: "var(--critical)",
           }}
         >
           {state.error}
