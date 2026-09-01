@@ -7,6 +7,7 @@ import {
   slugify,
 } from "./lib/companies";
 import { classifyRoleFamily, natureFromHeadcounts, refineNatureFromNote } from "./lib/roles";
+import { expandRoleIntoOffers, loadTaxRegimeFor } from "./lib/offers";
 import type { ReviewLog } from "./lib/review";
 import type { ImportedDrive, ImportedWorkbook } from "./sheets/types";
 
@@ -29,6 +30,8 @@ export type LoadResult = {
   drives: number;
   roles: number;
   rounds: number;
+  /** Offer rows expanded from the published headcounts. */
+  offers: number;
 };
 
 type CompanyRef = { id: string; name: string };
@@ -243,6 +246,18 @@ export async function loadWorkbook(
       );
     }
 
+    // Offers expanded from the last run have to go before the drives do.
+    // `Offer.driveRoleId` is `onDelete: SetNull`, so cascading the drive would
+    // orphan them rather than remove them, and every re-import would stack
+    // another full copy of every headcount on top of the previous one.
+    // Student submissions are untouched: this is scoped to OFFICIAL_IMPORT.
+    const staleOffers = await prisma.offer.deleteMany({
+      where: { batchId: batch.id, source: "OFFICIAL_IMPORT" },
+    });
+    if (staleOffers.count > 0) {
+      console.log(`  removed ${staleOffers.count} offer row(s) from a prior import`);
+    }
+
     await prisma.drive.deleteMany({
       where: { batchId: batch.id, source: "OFFICIAL_IMPORT" },
     });
@@ -276,6 +291,11 @@ export async function loadWorkbook(
   let driveCount = 0;
   let roleCount = 0;
   let roundCount = 0;
+  let offerCount = 0;
+
+  // Identical for every row in a run, and deriveCompensation is pure, so this
+  // is read once rather than once per expanded offer.
+  const regime = await loadTaxRegimeFor(prisma);
 
   for (const { companyId, companyName, visitNumber, blocks } of groups) {
     const first = blocks[0]!;
@@ -434,6 +454,22 @@ export async function loadWorkbook(
       roleCount += 1;
       roundCount += role.rounds.length;
 
+      // The headcount becomes the offer rows it stands for. The DriveRole above
+      // keeps the sheet's own figure so `verify.ts` can still check the import
+      // against the published footer totals; these rows are what the app reads.
+      offerCount += await expandRoleIntoOffers(prisma, {
+        role,
+        driveRoleId: driveRole.id,
+        companyId: company.id,
+        batchId: batch.id,
+        cycle: first.cycle,
+        tierKey: resolvedTier,
+        roleFamily: classifyRoleFamily(role.title),
+        regime,
+        eligibleBranches,
+        announcedCgpaCutoff: gpa.numeric,
+      });
+
       if (parsed.deriveTierFromCtc && resolvedTier === null && role.ctcLpa !== null) {
         review.add({
           severity: "UNRESOLVED",
@@ -475,5 +511,6 @@ export async function loadWorkbook(
     drives: driveCount,
     roles: roleCount,
     rounds: roundCount,
+    offers: offerCount,
   };
 }

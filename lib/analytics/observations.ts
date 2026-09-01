@@ -18,6 +18,11 @@ import { prisma } from "@/lib/db";
  * point: `getCompanyHistory` below, which the company profile uses to show what
  * a recruiter did in previous years. It never reaches an aggregate. A batch
  * with no submissions reports honest emptiness rather than a borrowed number.
+ *
+ * The separation is no longer a separation of TABLES — imported placements are
+ * `Offer` rows too, so that an archived year has the same shape as a live one
+ * instead of three integers on a column. It is a separation by `Offer.source`,
+ * and every query below that describes students filters on it explicitly.
  */
 
 export type Observation = {
@@ -79,6 +84,11 @@ export async function loadObservations(
     where: {
       batch: { year: filters.batchYear },
       deletedAt: null,
+      // The imported rows live in this same table. They are a published
+      // headcount expanded into N identical rows, so letting them through here
+      // would weight one advertised figure N times against N people who each
+      // reported once.
+      source: "SELF_REPORTED",
       verification: { not: "REMOVED" },
       ...(filters.cycle ? { cycle: filters.cycle as never } : {}),
       ...(filters.tierKey ? { tierKey: filters.tierKey } : {}),

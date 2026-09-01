@@ -225,6 +225,21 @@ export async function verifyAgainstFooters(
     tolerance: 0,
   });
 
+  // The expansion has to be lossless in both directions: one offer row per
+  // placed student, and no row the sheet did not account for. If these two
+  // ever disagree, the app is reporting a different number of placements than
+  // the source published — which is the whole thing this file exists to catch.
+  const expandedOffers = await prisma.offer.count({
+    where: { batchId: batch.id, source: "OFFICIAL_IMPORT", deletedAt: null },
+  });
+
+  checks.push({
+    label: "All tabs: offer rows expanded from those headcounts",
+    expected: grandTotal || null,
+    actual: expandedOffers,
+    tolerance: 0,
+  });
+
   // Every tab's COUNTA of the company column, checked per tab. This covers the
   // two tabs with no tier — "Internship Only" and "Summer Internship PPOs" —
   // whose rows are otherwise unverified by the tier checks above.
