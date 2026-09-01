@@ -148,7 +148,7 @@ export function parseStipendCell(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
 
-  const raw = String(value).replace(/\s+/g, " ").trim();
+  const raw = String(value).replace(/\s+/g, " ").replace(/,/g, "").trim();
   if (!raw || raw === "-" || raw === "--") return null;
 
   const match = /(\d+(?:\.\d+)?)\s*(lpa|lakhs?|lacs?|l|k)?/i.exec(raw);
@@ -318,6 +318,18 @@ function readTab(
       let pptDate: Date | null = null;
       if (cols.pptDate !== null) {
         const parsed = parseSheetDate(sheet.getCell(row, cols.pptDate).value, window);
+        if (parsed.isAmbiguous) {
+          review.add({
+            severity: "UNRESOLVED",
+            sheet: tab.sheet,
+            row,
+            company: name,
+            field: "PPT date",
+            rawValue: parsed.raw,
+            outcome: "pptDate left null; nothing on the drive keeps the raw text.",
+            reason: parsed.note ?? "Could not resolve the date.",
+          });
+        }
         pptDate = parsed.isAmbiguous ? null : parsed.start;
       }
 
