@@ -293,6 +293,13 @@ async function detectOutlier(
       deletedAt: null,
       verification: { notIn: ["DISPUTED", "REMOVED"] },
       compensation: { ctcLpa: { not: null } },
+
+      // Only other students count as peers. An imported headcount is one
+      // published figure expanded into N identical rows, so leaving it in here
+      // would let a spreadsheet set the median on its own — and then flag the
+      // first student who honestly reports something different as the outlier.
+      // `recomputeCorroboration` filters the same way, for the same reason.
+      source: "SELF_REPORTED",
     },
     select: { compensation: { select: { ctcLpa: true } } },
   });

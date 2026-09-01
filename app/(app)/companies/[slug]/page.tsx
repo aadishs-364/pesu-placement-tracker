@@ -86,10 +86,11 @@ export default async function CompanyPage({
       children: { select: { name: true, slug: true } },
       aliases: { select: { alias: true } },
       // Student submissions, which carry the process notes and the per-person
-      // detail the imported drive rows never had. Removed and soft-deleted
-      // records are excluded here rather than filtered in the view.
+      // detail the imported rows never had. Removed and soft-deleted records
+      // are excluded here rather than filtered in the view, and `source` keeps
+      // the list to actual submissions now that imports share this table.
       offers: {
-        where: { deletedAt: null, verification: { not: "REMOVED" } },
+        where: { deletedAt: null, source: "SELF_REPORTED", verification: { not: "REMOVED" } },
         select: {
           id: true,
           roleTitle: true,

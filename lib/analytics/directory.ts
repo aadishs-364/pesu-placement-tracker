@@ -148,6 +148,7 @@ async function buildRows(batchYear: number): Promise<Accumulator[]> {
         verification: { not: "REMOVED" },
       },
       select: {
+        source: true,
         roleTitle: true,
         roleFamily: true,
         cycle: true,
@@ -196,9 +197,6 @@ async function buildRows(batchYear: number): Promise<Accumulator[]> {
             title: true,
             roleFamily: true,
             tierKey: true,
-            placedInternship: true,
-            placedFte: true,
-            placedBoth: true,
             compensation: {
               select: {
                 id: true,
@@ -227,10 +225,17 @@ async function buildRows(batchYear: number): Promise<Accumulator[]> {
     return row;
   };
 
+  // Both layers are offer rows now; `source` is what separates them. A student
+  // who filed for themselves outranks a headcount for every field where the two
+  // can disagree, so the self-reported rows are folded in first and the imported
+  // ones fill only what nobody reported.
+  const selfReported = offers.filter((offer) => offer.source === "SELF_REPORTED");
+  const importedOffers = offers.filter((offer) => offer.source !== "SELF_REPORTED");
+
   // --- the live layer -------------------------------------------------------
   const cutoffsByKey = new Map<string, number[]>();
 
-  for (const offer of offers) {
+  for (const offer of selfReported) {
     const row = at(offer.company, offer.cycle);
     row.reports += 1;
     row.roleFamilies.add(offer.roleFamily);
@@ -287,17 +292,40 @@ async function buildRows(batchYear: number): Promise<Accumulator[]> {
   }
 
   // --- the imported layer, filling only what nobody reported ----------------
+  // One row per placed student, counted from the offers themselves rather than
+  // summed off DriveRole's placed* columns. Same figure, one source of truth.
+  for (const offer of importedOffers) {
+    const row = at(offer.company, offer.cycle);
+    row.importedPlaced = (row.importedPlaced ?? 0) + 1;
+
+    row.roleFamilies.add(offer.roleFamily);
+    if (offer.roleTitle && !row.roleTitles.includes(offer.roleTitle)) {
+      row.roleTitles.push(offer.roleTitle);
+    }
+    if (offer.tierKey && !row.tierKeys.includes(offer.tierKey)) row.tierKeys.push(offer.tierKey);
+    for (const code of offer.eligibleBranches) {
+      if (!row.eligibleBranches.includes(code)) row.eligibleBranches.push(code);
+    }
+
+    // An advertised package never overwrites one a student reported.
+    if (row.reports === 0) {
+      const pkg = offer.compensation;
+      row.highestCtcLpa = higher(row.highestCtcLpa, pkg?.ctcLpa ? Number(pkg.ctcLpa) : null);
+      row.highestStipendInr = higher(
+        row.highestStipendInr,
+        pkg?.stipendPerMonthInr ? Number(pkg.stipendPerMonthInr) : null,
+      );
+      row.firstYearCashLpa = higher(
+        row.firstYearCashLpa,
+        pkg?.firstYearCashLpa ? Number(pkg.firstYearCashLpa) : null,
+      );
+    }
+  }
+
   for (const drive of drives) {
     const row = at(drive.company, drive.cycle);
     row.importedStatus = drive.status;
     row.isRepeatVisit = row.isRepeatVisit || drive.visitNumber > 1;
-
-    const placed = drive.roles.reduce(
-      (sum, role) =>
-        sum + (role.placedInternship ?? 0) + (role.placedFte ?? 0) + (role.placedBoth ?? 0),
-      0,
-    );
-    row.importedPlaced = (row.importedPlaced ?? 0) + placed;
 
     for (const role of drive.roles) {
       row.roleFamilies.add(role.roleFamily);

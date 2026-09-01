@@ -119,6 +119,10 @@ export async function getBatchOverview(
     where: {
       batchId: batch.id,
       deletedAt: null,
+      // Imported rows are all ACCEPTED by construction — a placement sheet only
+      // records placements — so counting them here would drown out the students
+      // who told us they declined.
+      source: "SELF_REPORTED",
       verification: { not: "REMOVED" },
       ...(filters.cycle ? { cycle: filters.cycle as never } : {}),
       ...(filters.tierKey ? { tierKey: filters.tierKey } : {}),
@@ -293,6 +297,10 @@ export async function getAnnouncedCutoffs(batchYear: number): Promise<CutoffRow[
     where: {
       batch: { year: batchYear },
       deletedAt: null,
+      // Every imported row for a drive carries that drive's announced cutoff,
+      // so a company that placed 88 would look like 88 people independently
+      // reporting the same bar. It is one report, and it is not a student's.
+      source: "SELF_REPORTED",
       verification: { not: "REMOVED" },
       announcedCgpaCutoff: { not: null },
     },
@@ -388,7 +396,15 @@ export async function getCompanyTrend(companyId: string): Promise<CompanyTrendPo
   const [history, offers] = await Promise.all([
     getCompanyHistory(companyId),
     prisma.offer.findMany({
-      where: { companyId, deletedAt: null, verification: { not: "REMOVED" } },
+      // `getCompanyHistory` above already returns the imported years. Without
+      // this filter the same placements would arrive down both arms of the
+      // Promise and the trend would plot each archived year twice.
+      where: {
+        companyId,
+        deletedAt: null,
+        source: "SELF_REPORTED",
+        verification: { not: "REMOVED" },
+      },
       select: {
         cycle: true,
         announcedCgpaCutoff: true,
