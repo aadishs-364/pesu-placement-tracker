@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Flag, ShieldCheck, TriangleAlert } from "lucide-react";
-import { requireStudent, roleAtLeast } from "@/lib/auth/rbac";
+import { getCurrentStudent, roleAtLeast } from "@/lib/auth/rbac";
 import { prisma } from "@/lib/db";
 import { canShowName } from "@/lib/privacy/gate";
 import {
@@ -72,7 +72,7 @@ export default async function OfferPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const viewer = await requireStudent();
+  const viewer = await getCurrentStudent();
   const [{ id }, query] = await Promise.all([params, searchParams]);
 
   const offer = await prisma.offer.findUnique({
@@ -88,10 +88,13 @@ export default async function OfferPage({
     },
   });
 
-  if (!offer || (offer.deletedAt !== null && !roleAtLeast(viewer.role, "ADMIN"))) notFound();
+  // A signed-out visitor is neither the owner nor an admin, so a soft-deleted
+  // offer is a 404 to them exactly as it is to any other student.
+  const isAdmin = viewer !== null && roleAtLeast(viewer.role, "ADMIN");
 
-  const isOwner = offer.studentId === viewer.id;
-  const isAdmin = roleAtLeast(viewer.role, "ADMIN");
+  if (!offer || (offer.deletedAt !== null && !isAdmin)) notFound();
+
+  const isOwner = viewer !== null && offer.studentId === viewer.id;
   const showName = canShowName(offer);
 
   const verification = VERIFICATION[offer.verification] ?? VERIFICATION["UNVERIFIED"]!;
@@ -129,7 +132,7 @@ export default async function OfferPage({
               <ArrowLeft size={14} />
               {offer.company.name}
             </Link>
-            {!isOwner ? <ReportButton offerId={offer.id} /> : null}
+            {viewer && !isOwner ? <ReportButton offerId={offer.id} /> : null}
           </>
         }
         meta={

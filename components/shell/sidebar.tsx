@@ -10,6 +10,7 @@ import {
   ChevronDown,
   FileText,
   LayoutDashboard,
+  LogIn,
   LogOut,
   Menu,
   Plus,
@@ -49,6 +50,13 @@ const PERSONAL: NavItem[] = [
   { href: "/submit", label: "Add an offer", icon: Plus },
 ];
 
+/**
+ * A signed-out visitor still gets the contribute link. "My offers" would be an
+ * empty room, but /submit is the whole reason to sign in, so it stays visible
+ * and asks for credentials at the point it actually needs them.
+ */
+const ANONYMOUS: NavItem[] = [{ href: "/submit", label: "Add an offer", icon: Plus }];
+
 const ADMIN: NavItem[] = [
   { href: "/admin/reports", label: "Reports", icon: ShieldAlert, prefix: true },
   { href: "/admin/audit", label: "Audit log", icon: FileText },
@@ -57,7 +65,8 @@ const ADMIN: NavItem[] = [
 export type SidebarProps = {
   batches: number[];
   activeBatch: number;
-  student: { name: string; srn: string; role: string; branch: string | null };
+  /** Null for a signed-out visitor: reading the tracker does not need an account. */
+  student: { name: string; srn: string; role: string; branch: string | null } | null;
   pendingReportCount: number;
 };
 
@@ -71,6 +80,11 @@ export function Sidebar(props: SidebarProps) {
   // fallback when they have not chosen one.
   const fromUrl = Number.parseInt(search.get("batch") ?? "", 10);
   const activeBatch = props.batches.includes(fromUrl) ? fromUrl : props.activeBatch;
+
+  // Signing in from the shell should return the visitor to the page they were
+  // reading, batch selection included, rather than dropping them on /overview.
+  const queryString = search.toString();
+  const currentUrl = queryString ? `${pathname}?${queryString}` : pathname;
 
   // Close the mobile drawer whenever navigation happens, otherwise it stays
   // over the page the user just asked for.
@@ -118,10 +132,10 @@ export function Sidebar(props: SidebarProps) {
         <nav className="flex-1 overflow-y-auto px-2 pb-4">
           <NavGroup items={PRIMARY} pathname={pathname} />
 
-          <GroupLabel>Yours</GroupLabel>
-          <NavGroup items={PERSONAL} pathname={pathname} />
+          <GroupLabel>{props.student ? "Yours" : "Contribute"}</GroupLabel>
+          <NavGroup items={props.student ? PERSONAL : ANONYMOUS} pathname={pathname} />
 
-          {props.student.role === "ADMIN" || props.student.role === "SUPER_ADMIN" ? (
+          {props.student?.role === "ADMIN" || props.student?.role === "SUPER_ADMIN" ? (
             <>
               <GroupLabel>Admin</GroupLabel>
               <NavGroup
@@ -134,24 +148,37 @@ export function Sidebar(props: SidebarProps) {
         </nav>
 
         <div className="flex items-center gap-2 border-t px-3 py-3" style={{ borderColor: "var(--line)" }}>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[12px] font-medium">{props.student.name}</div>
-            <div className="tnum truncate text-[11px]" style={{ color: "var(--text-tertiary)" }}>
-              {props.student.srn}
-              {props.student.branch ? ` · ${props.student.branch}` : ""}
-            </div>
-          </div>
-          <form action={logout}>
-            <button
-              type="submit"
-              title="Sign out"
-              aria-label="Sign out"
-              className="inline-flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-control)] transition-colors hover:bg-[var(--panel-hover)]"
+          {props.student ? (
+            <>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[12px] font-medium">{props.student.name}</div>
+                <div className="tnum truncate text-[11px]" style={{ color: "var(--text-tertiary)" }}>
+                  {props.student.srn}
+                  {props.student.branch ? ` · ${props.student.branch}` : ""}
+                </div>
+              </div>
+              <form action={logout}>
+                <button
+                  type="submit"
+                  title="Sign out"
+                  aria-label="Sign out"
+                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-control)] transition-colors hover:bg-[var(--panel-hover)]"
+                  style={{ color: "var(--text-secondary)" }}
+                >
+                  <LogOut size={15} />
+                </button>
+              </form>
+            </>
+          ) : (
+            <Link
+              href={`/login?next=${encodeURIComponent(currentUrl)}`}
+              className="flex h-8 flex-1 items-center gap-2 rounded-[var(--radius-control)] px-2 text-[13px] transition-colors hover:bg-[var(--panel-hover)]"
               style={{ color: "var(--text-secondary)" }}
             >
-              <LogOut size={15} />
-            </button>
-          </form>
+              <LogIn size={15} style={{ color: "var(--text-tertiary)" }} />
+              <span className="truncate">Sign in</span>
+            </Link>
+          )}
         </div>
       </aside>
     </>

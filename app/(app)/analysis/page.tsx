@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireStudent } from "@/lib/auth/rbac";
+import { getCurrentStudent } from "@/lib/auth/rbac";
 import { prisma } from "@/lib/db";
 import {
   getBatchOverview,
@@ -28,14 +28,14 @@ export default async function AnalysisPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const student = await requireStudent("/analysis");
+  const student = await getCurrentStudent();
   const params = await searchParams;
 
   const batches = await prisma.batch.findMany({ orderBy: { year: "desc" }, select: { year: true } });
   const requested = Number.parseInt(params["batch"] ?? "", 10);
   const batchYear =
     batches.find((batch) => batch.year === requested)?.year ??
-    student.graduationYear ??
+    student?.graduationYear ??
     batches[0]?.year ??
     new Date().getFullYear();
 

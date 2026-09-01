@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { requireStudent } from "@/lib/auth/rbac";
 import { prisma } from "@/lib/db";
 import { getCompanyTrend } from "@/lib/analytics/queries";
 import { canShowName } from "@/lib/privacy/gate";
@@ -78,7 +77,6 @@ export default async function CompanyPage({
   params: Promise<{ slug: string }>;
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  await requireStudent();
   const [{ slug }, query] = await Promise.all([params, searchParams]);
 
   const company = await prisma.company.findUnique({
