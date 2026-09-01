@@ -5,16 +5,17 @@ import { median } from "./stats";
 /**
  * The directory layer: search, filter, sort and pagination over companies.
  *
- * A row is one company in one cycle of one batch. It is built from student
- * submissions; where the imported spreadsheets also cover that company and
- * cycle, the imported figures are attached to the same row and labelled rather
- * than merged into it. Student-reported values always lead — a cutoff a
- * classmate heard announced this season beats one a spreadsheet recorded two
- * seasons ago, and the imported figure fills the cell only when nobody has
- * reported one.
+ * A row is one company in one cycle of one batch, built from the offers on
+ * record for it. This used to be a fold over two ranked layers — submissions
+ * first, then spreadsheet figures filling whatever nobody had reported — which
+ * only made sense while an archived season was three integers on a column
+ * instead of rows. It is one pass now.
+ *
+ * Drives are still read, for the things an offer cannot carry: whether the
+ * visit was a repeat, its outcome, the PPT date, and the CGPA bar as the sheet
+ * worded it. None of those is a count of people.
  *
  * Everything is filtered and counted in memory. A batch is a few hundred rows,
- * the row shape is a fold over two sources that SQL cannot express in one pass,
  * and doing it here keeps facet counts and result counts derived from exactly
  * the same list rather than from two queries that can disagree.
  *
@@ -28,7 +29,14 @@ export type SortKey = (typeof SORT_KEYS)[number];
 
 export type SortDirection = "asc" | "desc";
 
-export type SourceFilter = "students" | "imported";
+/**
+ * Whether anyone was placed, not where the record came from. This used to be
+ * "students" vs "imported" — a provenance split that no longer exists now that
+ * every season is offer rows. What is left is the honest distinction the drive
+ * data still makes: a company someone got an offer from, and a company that
+ * visited without a placement being recorded against it.
+ */
+export type SourceFilter = "placed" | "visited";
 
 export type DirectoryQuery = {
   batchYear: number;
@@ -56,11 +64,9 @@ export type DirectoryRow = {
   parentName: string | null;
   cycle: string;
 
-  /** Submissions filed for this company and cycle. The live number. */
+  /** Offers on record for this company and cycle, from every season. */
   reports: number;
-  /** Headcount the spreadsheets published. Null when no import covers this. */
-  importedPlaced: number | null;
-  /** Drive outcome, meaningful only where an import exists. */
+  /** Drive outcome, where a drive record exists for this company and cycle. */
   importedStatus: string | null;
 
   roleTitles: string[];
@@ -117,7 +123,6 @@ function blank(
     parentName: company.parent?.name ?? null,
     cycle,
     reports: 0,
-    importedPlaced: null,
     importedStatus: null,
     roleTitles: [],
     tierKeys: [],
@@ -148,7 +153,6 @@ async function buildRows(batchYear: number): Promise<Accumulator[]> {
         verification: { not: "REMOVED" },
       },
       select: {
-        source: true,
         roleTitle: true,
         roleFamily: true,
         cycle: true,
@@ -225,17 +229,14 @@ async function buildRows(batchYear: number): Promise<Accumulator[]> {
     return row;
   };
 
-  // Both layers are offer rows now; `source` is what separates them. A student
-  // who filed for themselves outranks a headcount for every field where the two
-  // can disagree, so the self-reported rows are folded in first and the imported
-  // ones fill only what nobody reported.
-  const selfReported = offers.filter((offer) => offer.source === "SELF_REPORTED");
-  const importedOffers = offers.filter((offer) => offer.source !== "SELF_REPORTED");
-
-  // --- the live layer -------------------------------------------------------
+  // --- offers ---------------------------------------------------------------
+  // One loop, not two. This used to fold student submissions and imported
+  // headcounts separately, with the imported pass filling only fields nobody
+  // had reported. There is nothing left to rank: every season is offer rows and
+  // they are all read the same way.
   const cutoffsByKey = new Map<string, number[]>();
 
-  for (const offer of selfReported) {
+  for (const offer of offers) {
     const row = at(offer.company, offer.cycle);
     row.reports += 1;
     row.roleFamilies.add(offer.roleFamily);
@@ -291,37 +292,10 @@ async function buildRows(batchYear: number): Promise<Accumulator[]> {
     row.cutoffSource = "students";
   }
 
-  // --- the imported layer, filling only what nobody reported ----------------
-  // One row per placed student, counted from the offers themselves rather than
-  // summed off DriveRole's placed* columns. Same figure, one source of truth.
-  for (const offer of importedOffers) {
-    const row = at(offer.company, offer.cycle);
-    row.importedPlaced = (row.importedPlaced ?? 0) + 1;
-
-    row.roleFamilies.add(offer.roleFamily);
-    if (offer.roleTitle && !row.roleTitles.includes(offer.roleTitle)) {
-      row.roleTitles.push(offer.roleTitle);
-    }
-    if (offer.tierKey && !row.tierKeys.includes(offer.tierKey)) row.tierKeys.push(offer.tierKey);
-    for (const code of offer.eligibleBranches) {
-      if (!row.eligibleBranches.includes(code)) row.eligibleBranches.push(code);
-    }
-
-    // An advertised package never overwrites one a student reported.
-    if (row.reports === 0) {
-      const pkg = offer.compensation;
-      row.highestCtcLpa = higher(row.highestCtcLpa, pkg?.ctcLpa ? Number(pkg.ctcLpa) : null);
-      row.highestStipendInr = higher(
-        row.highestStipendInr,
-        pkg?.stipendPerMonthInr ? Number(pkg.stipendPerMonthInr) : null,
-      );
-      row.firstYearCashLpa = higher(
-        row.firstYearCashLpa,
-        pkg?.firstYearCashLpa ? Number(pkg.firstYearCashLpa) : null,
-      );
-    }
-  }
-
+  // --- drives, for what an offer row cannot carry ---------------------------
+  // Status, repeat visits, the PPT date and the cutoff as the sheet worded it
+  // ("8(+ Resume)") are properties of the VISIT, not of anyone's offer. Nothing
+  // read here is a placement count; those come from the offers above.
   for (const drive of drives) {
     const row = at(drive.company, drive.cycle);
     row.importedStatus = drive.status;
@@ -397,8 +371,7 @@ function matches(row: Accumulator, query: DirectoryQuery, omit?: FilterKey): boo
   }
 
   if (omit !== "sources" && query.sources?.length) {
-    const isReported = row.reports > 0;
-    const wanted = query.sources.includes(isReported ? "students" : "imported");
+    const wanted = query.sources.includes(row.reports > 0 ? "placed" : "visited");
     if (!wanted) return false;
   }
 
@@ -466,7 +439,7 @@ export async function queryDirectory(query: DirectoryQuery): Promise<DirectoryRe
   const tierCounts = countBy("tierKeys", (row) => row.tierKeys);
   const branchCounts = countBy("branchCodes", (row) => row.eligibleBranches);
   const cycleCounts = countBy("cycles", (row) => [row.cycle]);
-  const sourceCounts = countBy("sources", (row) => [row.reports > 0 ? "students" : "imported"]);
+  const sourceCounts = countBy("sources", (row) => [row.reports > 0 ? "placed" : "visited"]);
 
   return {
     rows: rows.slice((page - 1) * pageSize, page * pageSize),

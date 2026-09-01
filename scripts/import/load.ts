@@ -246,21 +246,25 @@ export async function loadWorkbook(
       );
     }
 
-    // Offers expanded from the last run have to go before the drives do.
-    // `Offer.driveRoleId` is `onDelete: SetNull`, so cascading the drive would
-    // orphan them rather than remove them, and every re-import would stack
-    // another full copy of every headcount on top of the previous one.
-    // Student submissions are untouched: this is scoped to OFFICIAL_IMPORT.
-    const staleOffers = await prisma.offer.deleteMany({
-      where: { batchId: batch.id, source: "OFFICIAL_IMPORT" },
-    });
-    if (staleOffers.count > 0) {
-      console.log(`  removed ${staleOffers.count} offer row(s) from a prior import`);
-    }
-
     await prisma.drive.deleteMany({
       where: { batchId: batch.id, source: "OFFICIAL_IMPORT" },
     });
+  }
+
+  // Outside the `if` on purpose. `Offer.driveRoleId` is `onDelete: SetNull`, so
+  // an expanded offer OUTLIVES the drive it came from: remove those drives by
+  // any other route — a manual cleanup, a cascade from somewhere else — and the
+  // next run finds no prior drives, skips a cleanup nested in that branch, and
+  // stacks a second full copy of every headcount on top of the first. Keying
+  // off the batch rather than off the drives that happen to still exist is what
+  // makes a re-import idempotent.
+  //
+  // Student submissions are never touched: this is scoped to OFFICIAL_IMPORT.
+  const staleOffers = await prisma.offer.deleteMany({
+    where: { batchId: batch.id, source: "OFFICIAL_IMPORT" },
+  });
+  if (staleOffers.count > 0) {
+    console.log(`  removed ${staleOffers.count} offer row(s) from a prior import`);
   }
 
   // Deleting a drive cascades to its roles, but a compensation package is not

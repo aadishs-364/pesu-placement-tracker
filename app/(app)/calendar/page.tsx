@@ -48,15 +48,7 @@ export default async function CalendarPage({
 
   const [offers, drives] = await Promise.all([
     prisma.offer.findMany({
-      // Imported rows have neither an offer date nor rounds — nobody sat them
-      // on record — so they would only ever enlarge the "no date attached"
-      // denominator this page reports on.
-      where: {
-        batch: { year: batchYear },
-        deletedAt: null,
-        source: "SELF_REPORTED",
-        verification: { not: "REMOVED" },
-      },
+      where: { batch: { year: batchYear }, deletedAt: null, verification: { not: "REMOVED" } },
       select: {
         id: true,
         roleTitle: true,
