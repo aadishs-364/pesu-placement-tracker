@@ -21,8 +21,8 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Companies · PESU Placement Tracker" };
 
 const SOURCE: Record<string, { label: string; tone: Tone }> = {
-  students: { label: "Reported", tone: "accent" },
-  imported: { label: "Imported only", tone: "neutral" },
+  placed: { label: "Offers on record", tone: "accent" },
+  visited: { label: "No offers", tone: "neutral" },
 };
 
 const CYCLE: Record<string, string> = {
@@ -114,10 +114,10 @@ export default async function CompaniesPage({
     },
     {
       key: "source",
-      header: "Source",
+      header: "Outcome",
       hideBelow: "sm",
       render: (row) => {
-        const source = SOURCE[row.reports > 0 ? "students" : "imported"]!;
+        const source = SOURCE[row.reports > 0 ? "placed" : "visited"]!;
         return <StatusBadge tone={source.tone}>{source.label}</StatusBadge>;
       },
     },
@@ -128,15 +128,7 @@ export default async function CompaniesPage({
       numeric: true,
       width: "88px",
       render: (row) =>
-        row.reports > 0 ? (
-          formatCount(row.reports)
-        ) : row.importedPlaced ? (
-          <Muted title={`${row.importedPlaced} in the imported records; nobody has filed here`}>
-            ({formatCount(row.importedPlaced)})
-          </Muted>
-        ) : (
-          <Muted>—</Muted>
-        ),
+        row.reports > 0 ? formatCount(row.reports) : <Muted>—</Muted>,
     },
     {
       key: "stipend",
@@ -236,7 +228,7 @@ export default async function CompaniesPage({
         title="Companies"
         description={`${formatCount(result.reportedRows)} of ${formatCount(
           result.total,
-        )} rows for the batch of ${batchYear} have student reports behind them; the rest are imported records, shown greyed. Filters and sorting live in the address bar, so any view here is a link you can send someone.`}
+        )} rows for the batch of ${batchYear} have an offer on record; the rest are companies that visited without one being recorded. Filters and sorting live in the address bar, so any view here is a link you can send someone.`}
       />
 
       <FilterBar

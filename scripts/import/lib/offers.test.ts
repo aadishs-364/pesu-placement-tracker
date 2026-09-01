@@ -10,16 +10,20 @@ import { expandRoleIntoOffers, type ExpandArgs } from "./offers";
  * be counted as a human being by every query that counts human beings.
  */
 
-type Written = { offers: Array<Record<string, unknown>>; packages: number };
+type Written = { offers: Array<Record<string, unknown>>; packages: number; transactions: number };
 
 /**
  * Just enough of the client for the two `create` calls the expander makes.
  * A real database is not needed to prove how many rows it asks for, or what it
  * puts in them.
+ *
+ * Only `$transaction` is reachable: the package and the offer are written
+ * together or not at all, so a fake that also answered `prisma.offer.create`
+ * directly would let that pairing regress without a test noticing.
  */
 function fakePrisma(): { prisma: PrismaClient; written: Written } {
-  const written: Written = { offers: [], packages: 0 };
-  const prisma = {
+  const written: Written = { offers: [], packages: 0, transactions: 0 };
+  const tx = {
     compensationPackage: {
       create: async () => {
         written.packages += 1;
@@ -31,6 +35,12 @@ function fakePrisma(): { prisma: PrismaClient; written: Written } {
         written.offers.push(data);
         return { id: `offer-${written.offers.length}` };
       },
+    },
+  };
+  const prisma = {
+    $transaction: async (run: (client: typeof tx) => Promise<unknown>) => {
+      written.transactions += 1;
+      return run(tx);
     },
   } as unknown as PrismaClient;
   return { prisma, written };
@@ -84,6 +94,9 @@ describe("expandRoleIntoOffers", () => {
     expect(written.offers).toHaveLength(3);
     // Offer.compensationId is unique, so these cannot share one row.
     expect(written.packages).toBe(3);
+    // Each pair inside its own transaction: a package must never outlive a
+    // failed offer write, because nothing would ever reach or clean it up.
+    expect(written.transactions).toBe(3);
   });
 
   it("never attaches a student, and never claims one anonymously", async () => {
