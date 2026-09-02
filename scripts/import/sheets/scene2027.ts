@@ -25,6 +25,22 @@ import type {
  *     student counts to imply a nature.
  *   - deriveTierFromCtc is true: there are no tier tabs here, one flat list, so a
  *     role's tier is worked out from its CTC by the loader.
+ *
+ * What that means downstream, written here so it reads as a decision rather than
+ * a side-effect: no headcounts means no offer rows, so 2027 contributes nothing
+ * to anything computed from offers — no median, no highest package, no placement
+ * count. That is not an empty batch by accident. Nobody has been placed yet, and
+ * an empty overview is the honest rendering of that.
+ *
+ * The drives are still real and still visible. They carry PPT and assessment
+ * dates, so they appear on the calendar, and the company directory lists them as
+ * visited without an offer on record. A student looking at 2027 sees which
+ * companies have come and when, which is all anyone knows in August.
+ *
+ * The advertised packages ride on the DriveRole rather than on an offer, which
+ * is the right place for them: an advertised CTC is a claim a company made, not
+ * a package anyone received. When students start filing against 2027, their own
+ * offers will be the first thing on record to say what was actually paid.
  */
 
 const BATCH_YEAR = 2027;

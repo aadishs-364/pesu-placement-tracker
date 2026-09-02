@@ -142,7 +142,15 @@ function headcount(cell: Cell): number | null {
  *   "1L", "1.5L"    lakhs           -> ×100000
  *   "35k", "60k"    thousands       -> ×1000
  *   "15k-20k"       a range         -> the lower end
+ *   "12 LPA"        an annual figure in a monthly column -> null
  *   "-", ""         unknown         -> null
+ *
+ * Everything here is rupees PER MONTH, which is what the column means and what
+ * `stipendPerMonthInr` stores. "LPA" is per annum, so it cannot be one of the
+ * units: treating it as a lakh multiplier turned "12 LPA" into a stipend of
+ * 1,200,000 a month. It stays in the pattern only so it can be recognised and
+ * refused — dropped from the pattern, the same cell would match the bare `12`
+ * and land as twelve rupees, which is wrong in a quieter way.
  */
 export function parseStipendCell(value: unknown): number | null {
   if (value === null || value === undefined) return null;
@@ -158,8 +166,12 @@ export function parseStipendCell(value: unknown): number | null {
   if (!Number.isFinite(amount)) return null;
 
   const unit = (match[2] ?? "").toLowerCase();
+  // An annual figure in a monthly column. We could divide by twelve, but the
+  // sheets also write a package's CTC into this column by mistake, and those
+  // two are not the same claim. Refuse rather than guess which one was meant.
+  if (unit === "lpa") return null;
   if (unit === "k") return amount * 1_000;
-  if (unit && unit !== "k") return amount * 100_000; // l / lpa / lakh / lac
+  if (unit) return amount * 100_000; // l / lakh / lac
   return amount;
 }
 
@@ -186,7 +198,8 @@ function verifyHeaders(sheet: Worksheet, tab: HistoricalTab, batchYear: number):
     throw new Error(
       `Sheet "${tab.sheet}" (batch ${batchYear}) does not have the expected layout — refusing to ` +
         `import rather than map columns wrongly.\n${problems.join("\n")}\n` +
-        `If the sheet has legitimately changed, update its config in scripts/import/sheets/historical.ts.`,
+        `If the sheet has legitimately changed, update its config in ` +
+        `scripts/import/sheets/historical-configs.ts.`,
     );
   }
 }

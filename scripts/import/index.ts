@@ -91,13 +91,22 @@ function arg(name: string): boolean {
   return process.argv.includes(`--${name}`);
 }
 
-/** The one season named by --year=NNNN, or null for "all of them". */
+/**
+ * The one season named by --year=NNNN, or null for "all of them".
+ *
+ * The format is checked here rather than left to `parseInt`, which reads
+ * `--year=22` as 22 and `--year=2026x` as 2026. Both would then fail further
+ * down with "No importer is defined for batch 22", which is true but tells the
+ * reader nothing about the typo that caused it.
+ */
 function requestedYear(): number | null {
   const flag = process.argv.find((value) => value.startsWith("--year="));
   if (!flag) return null;
-  const year = Number.parseInt(flag.slice("--year=".length), 10);
-  if (!Number.isInteger(year)) throw new Error(`--year expects a 4-digit year, got "${flag}".`);
-  return year;
+  const value = flag.slice("--year=".length);
+  if (!/^\d{4}$/.test(value)) {
+    throw new Error(`--year expects a 4-digit year, got "${flag}".`);
+  }
+  return Number.parseInt(value, 10);
 }
 
 async function openWorkbook(path: string): Promise<ExcelJS.Workbook> {
@@ -127,8 +136,17 @@ function summarise(parsed: ImportedWorkbook): void {
 /**
  * Parses one season if its file is available. Returns null when a file-based
  * season's workbook is not present, so the caller can skip it.
+ *
+ * Unless the caller asked for that season by name. A bare run imports whatever
+ * is on disk, and skipping the rest is the point; `--year=2024` is a request,
+ * and answering a request for one season with a clean exit and no rows is how
+ * someone concludes the importer ran and their data is missing.
  */
-async function parseSource(source: Source, review: ReviewLog): Promise<ImportedWorkbook | null> {
+async function parseSource(
+  source: Source,
+  review: ReviewLog,
+  namedExplicitly: boolean,
+): Promise<ImportedWorkbook | null> {
   if (source.file === null) {
     return source.read(null, review);
   }
@@ -136,6 +154,13 @@ async function parseSource(source: Source, review: ReviewLog): Promise<ImportedW
   const path = process.env[source.file.envVar] ?? source.file.defaultPath;
   const resolved = resolve(path);
   if (!existsSync(resolved)) {
+    if (namedExplicitly) {
+      throw new Error(
+        `--year=${source.batchYear} was asked for, but there is no workbook at ${path}. ` +
+          `Set ${source.file.envVar} to its location, or drop the flag to import the seasons ` +
+          `whose workbooks are present.`,
+      );
+    }
     console.log(`\n  batch ${source.batchYear}: no workbook at ${path} — skipped.`);
     return null;
   }
@@ -158,7 +183,7 @@ async function main() {
 
   const parsedWorkbooks: ImportedWorkbook[] = [];
   for (const source of sources) {
-    const parsed = await parseSource(source, review);
+    const parsed = await parseSource(source, review, only !== null);
     if (!parsed) continue;
     summarise(parsed);
     parsedWorkbooks.push(parsed);
