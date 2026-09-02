@@ -470,10 +470,16 @@ function readTab(
     const roleText = cellText(sheet.getCell(row, spec.layout.role));
     const noteText = cellText(sheet.getCell(row, spec.layout.note));
 
-    // A totals row with no company of its own closes the tab. The 2026 footer
-    // is navy and caught above; the 2027 sheet instead ends with an orange
-    // "Total" line whose only label sits in the role column, so without this it
-    // would be appended as a phantom role to the last real company.
+    // A totals row whose only label sits in the ROLE column closes the tab.
+    // Without this it would be appended as a phantom role to the last real
+    // company above it.
+    //
+    // This is inert on 2026, not compatible with it. Every cell of that
+    // workbook was scanned for /^\s*(grand\s*)?total\s*$/i: four hits, all in
+    // the company column or the Presentation column, none in the role column.
+    // What stops those rows is the navy-footer check above, not this. So do not
+    // read this as covering both seasons — it covers a layout 2026 does not
+    // have, and the season that does have it is not in this PR.
     if (!companyText && roleText && /^(total|grand ?total)$/i.test(roleText.trim())) {
       footerStartRow = row;
       break;
@@ -746,15 +752,15 @@ function readFooter(
   return stats;
 }
 
-/** How to read one colour-coded workbook — the shape shared by 2026 and 2027. */
+/** How to read one workbook in the colour-coded "Placement Scene" format. */
 export type ColourWorkbookSpec = {
   batchYear: number;
   tabs: TabSpec[];
   /**
    * Whether to collect each tab's own footer totals for verification. True for
    * 2026, whose tabs carry the full navy summary block; false for a sheet whose
-   * footer is absent or too sparse to check against (2027 has only a placed
-   * count), so its fidelity rests on the review log instead.
+   * footer is absent or too sparse to check against, so its fidelity rests on
+   * the review log instead.
    */
   emitFooters: boolean;
   /** Passed straight through to the loader — see ImportedWorkbook. */
@@ -764,8 +770,12 @@ export type ColourWorkbookSpec = {
 /**
  * Reads any workbook in the "Placement Scene" colour-coded format: merged
  * company blocks, meaning encoded in cell fill, and per-tab column layouts
- * declared as TabSpecs. Both the 2026 and 2027 seasons use it; they differ only
- * in their tab layouts and whether a verifiable footer exists.
+ * declared as TabSpecs.
+ *
+ * 2026 is its only caller today. It is a shared reader rather than 2026's own
+ * because that season is not the last one to use this format — the workbook is
+ * a template the placement cohort keeps reusing, and a second season reading it
+ * should differ only in its TabSpecs and whether a verifiable footer exists.
  */
 export function readColourCodedWorkbook(
   workbook: Workbook,
